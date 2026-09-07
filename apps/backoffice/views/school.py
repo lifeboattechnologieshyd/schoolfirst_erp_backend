@@ -870,27 +870,75 @@ class GradeListAPIView(APIView):
     def get(self, request):
 
         school = request.school
+        branch_id = request.headers.get("branch_id")
 
         application_logger.info(
             "grades_fetch_started",
             requested_by=str(request.user.id),
             school_id=str(school.id) if school else None,
+            branch_id=branch_id,
         )
 
-        grades = Grade.objects.select_related("school", "academic_year","branch",).filter(school=school).order_by("display_order")
+        if school is None:
+            application_logger.warning(
+                "grades_fetch_failed",
+                requested_by=str(request.user.id),
+                reason="school_not_found",
+            )
+
+            return CustomResponse.errorResponse(
+                description="School not found."
+            )
+
+        if not branch_id:
+            application_logger.warning(
+                "grades_fetch_failed",
+                requested_by=str(request.user.id),
+                school_id=str(school.id),
+                reason="branch_id_missing",
+            )
+
+            return CustomResponse.errorResponse(
+                description="Branch ID is required in headers."
+            )
+
+        branch = Branch.objects.filter(
+            id=branch_id,
+            school=school,
+        ).first()
+
+        if branch is None:
+            application_logger.warning(
+                "grades_fetch_failed",
+                requested_by=str(request.user.id),
+                school_id=str(school.id),
+                branch_id=branch_id,
+                reason="branch_not_found",
+            )
+
+            return CustomResponse.errorResponse(
+                description="Branch not found."
+            )
+
+        grades = Grade.objects.select_related(
+            "school",
+            "academic_year",
+            "branch",
+        ).filter(
+            school=school,
+            branch=branch,
+        ).order_by(
+            "display_order"
+        )
 
         data = [
             {
                 "id": str(grade.id),
                 "school": grade.school.name,
-                "branch": (
-                    {
-                        "id": str(grade.branch.id),
-                        "name": grade.branch.name,
-                    }
-                    if grade.branch
-                    else None
-                ),
+                "branch": {
+                    "id": str(grade.branch.id),
+                    "name": grade.branch.name,
+                },
                 "academic_year": grade.academic_year.name,
                 "name": grade.name,
                 "display_order": grade.display_order,
@@ -902,11 +950,14 @@ class GradeListAPIView(APIView):
         application_logger.info(
             "grades_fetched",
             requested_by=str(request.user.id),
-            school_id=str(school.id) if school else None,
+            school_id=str(school.id),
+            branch_id=str(branch.id),
             total_count=len(data),
         )
 
-        return CustomResponse.successResponse(data=data)
+        return CustomResponse.successResponse(
+            data=data
+        )
 
 
 class UpdateGradeAPIView(APIView):
