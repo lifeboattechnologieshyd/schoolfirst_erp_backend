@@ -803,10 +803,31 @@ class CreateGradeAPIView(APIView):
                 reason="academic_year_not_found",
             )
             return CustomResponse.errorResponse(description="Academic Year not found.")
+        branch_id = request.data.get("branch_id")
+        branch = None
+
+        if branch_id:
+            branch = Branch.objects.filter(
+                id=branch_id,
+                school=school,
+            ).first()
+
+            if branch is None:
+                audit_logger.warning(
+                    "grade_create_failed",
+                    performed_by=str(request.user.id),
+                    school_id=str(school.id),
+                    branch_id=str(branch_id),
+                    reason="branch_not_found",
+                )
+
+                return CustomResponse.errorResponse(
+                    description="Branch not found."
+                )
 
         grade_name = request.data.get("name")
 
-        if Grade.objects.filter(school=school, academic_year=academic_year, name=grade_name).exists():
+        if Grade.objects.filter(school=school, academic_year=academic_year, name=grade_name,branch=branch).exists():
             audit_logger.warning(
                 "grade_create_failed",
                 performed_by=str(request.user.id),
@@ -820,6 +841,7 @@ class CreateGradeAPIView(APIView):
         grade = Grade.objects.create(
             school=school,
             academic_year=academic_year,
+            branch=branch,
             name=grade_name,
             display_order=request.data.get("display_order"),
             status=request.data.get("status", Grade.Status.ACTIVE),
@@ -855,12 +877,20 @@ class GradeListAPIView(APIView):
             school_id=str(school.id) if school else None,
         )
 
-        grades = Grade.objects.select_related("school", "academic_year").filter(school=school).order_by("display_order")
+        grades = Grade.objects.select_related("school", "academic_year","branch",).filter(school=school).order_by("display_order")
 
         data = [
             {
                 "id": str(grade.id),
                 "school": grade.school.name,
+                "branch": (
+                    {
+                        "id": str(grade.branch.id),
+                        "name": grade.branch.name,
+                    }
+                    if grade.branch
+                    else None
+                ),
                 "academic_year": grade.academic_year.name,
                 "name": grade.name,
                 "display_order": grade.display_order,
@@ -895,44 +925,227 @@ class UpdateGradeAPIView(APIView):
             school_id=str(school.id) if school else None,
         )
 
-        grade = Grade.objects.filter(id=grade_id, school=school).first()
+        if school is None:
+            audit_logger.warning(
+                "grade_update_failed",
+                performed_by=str(request.user.id),
+                grade_id=str(grade_id),
+                reason="school_not_found",
+            )
+
+            return CustomResponse.errorResponse(
+                description="School not found."
+            )
+
+        grade = Grade.objects.filter(
+            id=grade_id,
+            school=school,
+        ).first()
 
         if grade is None:
             audit_logger.warning(
                 "grade_update_failed",
                 performed_by=str(request.user.id),
                 grade_id=str(grade_id),
-                school_id=str(school.id) if school else None,
+                school_id=str(school.id),
                 reason="grade_not_found",
             )
-            return CustomResponse.errorResponse(description="Grade not found.")
+
+            return CustomResponse.errorResponse(
+                description="Grade not found."
+            )
 
         old_name = grade.name
+        old_branch_id = grade.branch_id
+        old_academic_year_id = grade.academic_year_id
         old_display_order = grade.display_order
         old_status = grade.status
 
-        grade.name = request.data.get("name", grade.name)
-        grade.display_order = request.data.get("display_order", grade.display_order)
-        grade.status = request.data.get("status", grade.status)
+        # --------------------------------------------------
+        # Academic Year
+        # --------------------------------------------------
+
+        academic_year = grade.academic_year
+
+        if "academic_year_id" in request.data:
+
+            academic_year_id = request.data.get(
+                "academic_year_id"
+            )
+
+            academic_year = AcademicYear.objects.filter(
+                id=academic_year_id,
+                school=school,
+            ).first()
+
+            if academic_year is None:
+
+                audit_logger.warning(
+                    "grade_update_failed",
+                    performed_by=str(request.user.id),
+                    grade_id=str(grade_id),
+                    school_id=str(school.id),
+                    academic_year_id=academic_year_id,
+                    reason="academic_year_not_found",
+                )
+
+                return CustomResponse.errorResponse(
+                    description="Academic Year not found."
+                )
+
+        # --------------------------------------------------
+        # Branch
+        # --------------------------------------------------
+
+        branch = grade.branch
+
+        if "branch_id" in request.data:
+
+            branch_id = request.data.get(
+                "branch_id"
+            )
+
+            if branch_id:
+
+                branch = Branch.objects.filter(
+                    id=branch_id,
+                    school=school,
+                ).first()
+
+                if branch is None:
+
+                    audit_logger.warning(
+                        "grade_update_failed",
+                        performed_by=str(request.user.id),
+                        grade_id=str(grade_id),
+                        school_id=str(school.id),
+                        branch_id=branch_id,
+                        reason="branch_not_found",
+                    )
+
+                    return CustomResponse.errorResponse(
+                        description="Branch not found."
+                    )
+
+            else:
+                branch = None
+
+        # --------------------------------------------------
+        # Grade Name
+        # --------------------------------------------------
+
+        grade_name = request.data.get(
+            "name",
+            grade.name,
+        )
+
+        if grade_name:
+            grade_name = grade_name.strip()
+
+        if not grade_name:
+
+            return CustomResponse.errorResponse(
+                description="Grade name is required."
+            )
+
+        # --------------------------------------------------
+        # Duplicate Grade Validation
+        # --------------------------------------------------
+
+        grade_exists = Grade.objects.filter(
+            school=school,
+            academic_year=academic_year,
+            branch=branch,
+            name=grade_name,
+        ).exclude(
+            id=grade.id
+        ).exists()
+
+        if grade_exists:
+
+            audit_logger.warning(
+                "grade_update_failed",
+                performed_by=str(request.user.id),
+                grade_id=str(grade_id),
+                school_id=str(school.id),
+                academic_year_id=str(academic_year.id),
+                branch_id=str(branch.id) if branch else None,
+                grade_name=grade_name,
+                reason="grade_already_exists",
+            )
+
+            return CustomResponse.errorResponse(
+                description="Grade already exists."
+            )
+
+        # --------------------------------------------------
+        # Update
+        # --------------------------------------------------
+
+        grade.name = grade_name
+        grade.branch = branch
+        grade.academic_year = academic_year
+
+        if "display_order" in request.data:
+            grade.display_order = request.data.get(
+                "display_order"
+            )
+
+        if "status" in request.data:
+            grade.status = request.data.get(
+                "status"
+            )
+
         grade.save()
+
+        # --------------------------------------------------
+        # Audit Log
+        # --------------------------------------------------
 
         audit_logger.info(
             "grade_updated",
             performed_by=str(request.user.id),
             grade_id=str(grade.id),
             school_id=str(school.id),
-            academic_year_id=str(grade.academic_year_id),
+
             old_name=old_name,
             new_name=grade.name,
+
+            old_branch_id=(
+                str(old_branch_id)
+                if old_branch_id
+                else None
+            ),
+            new_branch_id=(
+                str(grade.branch_id)
+                if grade.branch_id
+                else None
+            ),
+
+            old_academic_year_id=(
+                str(old_academic_year_id)
+                if old_academic_year_id
+                else None
+            ),
+            new_academic_year_id=(
+                str(grade.academic_year_id)
+                if grade.academic_year_id
+                else None
+            ),
+
             old_display_order=old_display_order,
             new_display_order=grade.display_order,
+
             old_status=old_status,
             new_status=grade.status,
         )
 
-        return CustomResponse.successResponse(description="Grade updated successfully.")
+        return CustomResponse.successResponse(data={},
+
+            description="Grade updated successfully.",
 
 
+        )
 class CreateSectionAPIView(APIView):
 
     permission_classes = [IsAuthenticated, HasPermission]
