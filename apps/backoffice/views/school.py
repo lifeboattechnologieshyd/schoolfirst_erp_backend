@@ -2240,6 +2240,412 @@ class StudentListAPIView(APIView):
 
 
 
+class UpdateStudentAPIView(APIView):
+
+    permission_classes = [IsAuthenticated, HasPermission]
+    required_permission = "student.update"
+
+    def put(self, request, student_id):
+
+        school = request.school
+
+        audit_logger.info(
+            "student_update_started",
+            performed_by=str(request.user.id),
+            school_id=str(school.id) if school else None,
+            student_id=str(student_id),
+        )
+
+        if school is None:
+            return CustomResponse.errorResponse(
+                description="School not found."
+            )
+
+        student = Student.objects.filter(
+            id=student_id,
+            school=school,
+        ).first()
+
+        if student is None:
+            audit_logger.warning(
+                "student_update_failed",
+                performed_by=str(request.user.id),
+                school_id=str(school.id),
+                student_id=str(student_id),
+                reason="student_not_found",
+            )
+
+            return CustomResponse.errorResponse(
+                description="Student not found."
+            )
+
+        try:
+            with transaction.atomic():
+
+                # -------------------------
+                # Branch
+                # -------------------------
+
+                if "branch_id" in request.data:
+
+                    branch_id = request.data.get("branch_id")
+
+                    if branch_id:
+                        branch = Branch.objects.filter(
+                            id=branch_id,
+                            school=school,
+                        ).first()
+
+                        if branch is None:
+                            return CustomResponse.errorResponse(
+                                description="Branch not found."
+                            )
+                    else:
+                        branch = None
+
+                    student.branch = branch
+
+                # -------------------------
+                # Academic Year
+                # -------------------------
+
+                if "academic_year_id" in request.data:
+
+                    academic_year_id = request.data.get(
+                        "academic_year_id"
+                    )
+
+                    academic_year = AcademicYear.objects.filter(
+                        id=academic_year_id,
+                        school=school,
+                    ).first()
+
+                    if academic_year is None:
+                        return CustomResponse.errorResponse(
+                            description="Academic year not found."
+                        )
+
+                    student.academic_year = academic_year
+
+                # -------------------------
+                # Grade
+                # -------------------------
+
+                if "grade_id" in request.data:
+
+                    grade_id = request.data.get("grade_id")
+
+                    grade = Grade.objects.filter(
+                        id=grade_id,
+                        school=school,
+                    ).first()
+
+                    if grade is None:
+                        return CustomResponse.errorResponse(
+                            description="Grade not found."
+                        )
+
+                    student.grade = grade
+
+                # -------------------------
+                # Section
+                # -------------------------
+
+                if "section_id" in request.data:
+
+                    section_id = request.data.get("section_id")
+
+                    section = Section.objects.filter(
+                        id=section_id,
+                        grade=student.grade,
+                        branch=student.branch,
+                    ).first()
+
+                    if section is None:
+                        return CustomResponse.errorResponse(
+                            description="Section not found for the selected grade and branch."
+                        )
+
+                    student.section = section
+
+                # -------------------------
+                # Gender
+                # -------------------------
+
+                if "gender" in request.data:
+
+                    gender = request.data.get("gender")
+
+                    if gender not in Student.Gender.values:
+                        return CustomResponse.errorResponse(
+                            description="Invalid gender."
+                        )
+
+                    student.gender = gender
+
+                # -------------------------
+                # Board
+                # -------------------------
+
+                if "board" in request.data:
+
+                    board = request.data.get("board")
+
+                    if board not in Student.Board.values:
+                        return CustomResponse.errorResponse(
+                            description="Invalid board."
+                        )
+
+                    student.board = board
+
+                # -------------------------
+                # Hostel Type
+                # -------------------------
+
+                if "hostel_type" in request.data:
+
+                    hostel_type = request.data.get(
+                        "hostel_type"
+                    )
+
+                    if hostel_type not in Student.HostelType.values:
+                        return CustomResponse.errorResponse(
+                            description="Invalid hostel type."
+                        )
+
+                    student.hostel_type = hostel_type
+
+                # -------------------------
+                # Enrollment Type
+                # -------------------------
+
+                if "enrollment_type" in request.data:
+
+                    enrollment_type = request.data.get(
+                        "enrollment_type"
+                    )
+
+                    if enrollment_type not in Student.EnrollmentType.values:
+                        return CustomResponse.errorResponse(
+                            description="Invalid enrollment type."
+                        )
+
+                    student.enrollment_type = enrollment_type
+
+                # -------------------------
+                # Admission Number
+                # -------------------------
+
+                if "admission_number" in request.data:
+
+                    admission_number = request.data.get(
+                        "admission_number"
+                    )
+
+                    if admission_number:
+                        admission_number = admission_number.strip()
+
+                    if not admission_number:
+                        return CustomResponse.errorResponse(
+                            description="Admission number cannot be empty."
+                        )
+
+                    admission_exists = Student.objects.filter(
+                        school=school,
+                        admission_number=admission_number,
+                    ).exclude(
+                        id=student.id
+                    ).exists()
+
+                    if admission_exists:
+                        return CustomResponse.errorResponse(
+                            description="Admission number already exists."
+                        )
+
+                    student.admission_number = admission_number
+
+                # -------------------------
+                # Roll Number
+                # -------------------------
+
+                if "roll_number" in request.data:
+
+                    roll_number = request.data.get("roll_number")
+
+                    if roll_number is None:
+                        return CustomResponse.errorResponse(
+                            description="Roll number cannot be empty."
+                        )
+
+                    roll_exists = Student.objects.filter(
+                        section=student.section,
+                        roll_number=roll_number,
+                    ).exclude(
+                        id=student.id
+                    ).exists()
+
+                    if roll_exists:
+                        return CustomResponse.errorResponse(
+                            description="Roll number already exists in this section."
+                        )
+
+                    student.roll_number = roll_number
+
+                # -------------------------
+                # Blood Group
+                # -------------------------
+
+                if "blood_group" in request.data:
+
+                    valid_blood_groups = [
+                        "A+",
+                        "A-",
+                        "B+",
+                        "B-",
+                        "AB+",
+                        "AB-",
+                        "O+",
+                        "O-",
+                    ]
+
+                    blood_group = request.data.get(
+                        "blood_group"
+                    )
+
+                    if blood_group and blood_group not in valid_blood_groups:
+                        return CustomResponse.errorResponse(
+                            description="Invalid blood group."
+                        )
+
+                    student.blood_group = blood_group
+
+                # -------------------------
+                # Simple Fields
+                # -------------------------
+
+                simple_fields = [
+                    "name",
+                    "date_of_birth",
+                    "admission_date",
+                    "status",
+                    "place_of_birth",
+                    "photo_url",
+                    "nationality",
+                    "mother_tongue",
+                    "aadhaar_number",
+                    "religion",
+                    "caste",
+                    "sub_caste",
+                    "student_category",
+                    "identification_marks",
+                    "email",
+                    "address",
+                    "emergency_contact_name",
+                    "emergency_contact_mobile",
+                    "father_name",
+                    "father_mobile",
+                    "father_occupation",
+                    "mother_name",
+                    "mother_mobile",
+                    "mother_occupation",
+                    "guardian_name",
+                    "guardian_mobile",
+                    "guardian_occupation",
+                    "previous_school_name",
+                    "previous_school_tc_number",
+                    "previous_exam_percentage",
+                    "transport_required",
+                    "pickup_point",
+                ]
+
+                for field in simple_fields:
+
+                    if field in request.data:
+
+                        value = request.data.get(field)
+
+                        if field == "name" and value:
+                            value = value.strip()
+
+                        setattr(
+                            student,
+                            field,
+                            value,
+                        )
+
+                # -------------------------
+                # Fee Concession
+                # -------------------------
+
+                if "fee_concession_id" in request.data:
+
+                    fee_concession_id = request.data.get(
+                        "fee_concession_id"
+                    )
+
+                    if fee_concession_id:
+
+                        concession = FeeConcession.objects.filter(
+                            id=fee_concession_id,
+                            school=school,
+                        ).first()
+
+                        if concession is None:
+                            return CustomResponse.errorResponse(
+                                description="Fee concession not found."
+                            )
+
+                    else:
+                        concession = None
+
+                    # Update existing assignment
+                    fee_assignment = StudentFeeAssignment.objects.filter(
+                        student=student
+                    ).first()
+
+                    if fee_assignment:
+                        fee_assignment.concession = concession
+                        fee_assignment.save(
+                            update_fields=["concession"]
+                        )
+
+                student.save()
+
+        except Exception as e:
+
+            audit_logger.exception(
+                "student_update_failed",
+                performed_by=str(request.user.id),
+                school_id=str(school.id),
+                student_id=str(student.id),
+                reason="exception",
+                error=str(e),
+            )
+
+            return CustomResponse.errorResponse(
+                description=str(e)
+            )
+
+        audit_logger.info(
+            "student_updated",
+            performed_by=str(request.user.id),
+            school_id=str(school.id),
+            student_id=str(student.id),
+            admission_number=student.admission_number,
+            student_name=student.name,
+        )
+
+        return CustomResponse.successResponse(
+            description="Student updated successfully.",
+            data={
+                "id": str(student.id),
+                "name": student.name,
+                "admission_number": student.admission_number,
+            },
+        )
+
+
+
 class CreateStudentDocumentAPIView(APIView):
 
     permission_classes = [IsAuthenticated, HasPermission]

@@ -474,6 +474,9 @@ class Grade(AuditModel):
 
     school = models.ForeignKey("school.School",on_delete=models.CASCADE,related_name="grades",)
 
+    branch = models.ForeignKey(Branch,on_delete=models.SET_NULL,null=True,blank=True,related_name="grades",)
+
+
     academic_year = models.ForeignKey("school.AcademicYear",on_delete=models.CASCADE,related_name="grades",)
 
     name = models.CharField(max_length=50,)
