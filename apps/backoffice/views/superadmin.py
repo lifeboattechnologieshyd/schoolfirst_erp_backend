@@ -2295,6 +2295,8 @@ class GetSchoolClientInfoAPIView(APIView):
         client = (
             SchoolClient.objects.select_related(
                 "school__configuration",
+            ).prefetch_related(
+                "school__branches",
             )
             .filter(
                 identifier=identifier.strip(),
@@ -2320,6 +2322,13 @@ class GetSchoolClientInfoAPIView(APIView):
             return CustomResponse.errorResponse(
                 description="School configuration not found.",
             )
+        branches = [
+            {
+                "id": str(branch.id),
+                "name": branch.name,
+            }
+            for branch in client.school.branches.all()
+        ]
 
         return CustomResponse.successResponse(
 
@@ -2334,6 +2343,7 @@ class GetSchoolClientInfoAPIView(APIView):
                     "name": client.school.name,
 
                 },
+                 "branches": branches,
 
                 "client_type": client.client_type,
 
