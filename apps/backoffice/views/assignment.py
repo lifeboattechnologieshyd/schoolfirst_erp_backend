@@ -383,7 +383,7 @@ class AssignmentListAPIView(APIView):
             )
 
             academic_year_id = request.query_params.get("academic_year_id")
-            branch_id = request.query_params.get("branch_id")
+            branch_id = request.headers.get("X-Branch-Id")
             grade_id = request.query_params.get("grade_id")
             subject_id = request.query_params.get("subject_id")
             teacher_id = request.query_params.get("teacher_id")

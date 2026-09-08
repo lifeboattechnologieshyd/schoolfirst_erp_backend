@@ -209,7 +209,7 @@ class VehicleListAPIView(APIView):
         search = request.GET.get("search", "").strip()
         vehicle_type = request.GET.get("vehicle_type")
         status = request.GET.get("status")
-        branch_id = request.GET.get("branch_id")
+        branch_id = request.headers.get("X-Branch-Id")
 
         application_logger.info(
             "vehicle_list_requested",
@@ -1286,7 +1286,7 @@ class RouteListAPIView(APIView):
 
         school = request.school
 
-        branch_id = request.GET.get("branch_id")
+        branch_id = request.headers.get("X-Branch-Id")
         shift = request.GET.get("shift")
         status = request.GET.get("status")
         search = request.GET.get("search", "").strip()
@@ -2978,7 +2978,7 @@ class StopListAPIView(APIView):
 
         school = request.school
 
-        branch_id = request.query_params.get("branch_id")
+        branch_id = request.headers.get("X-Branch-Id")
         search = request.query_params.get("search")
 
         application_logger.info(
@@ -4231,7 +4231,7 @@ class TripListAPIView(APIView):
 
         school = request.school
 
-        branch_id = request.GET.get("branch_id")
+        branch_id = request.headers.get("X-Branch-Id")
         vehicle_assignment_id = request.GET.get("vehicle_assignment_id")
         trip_date = request.GET.get("trip_date")
         shift = request.GET.get("shift")

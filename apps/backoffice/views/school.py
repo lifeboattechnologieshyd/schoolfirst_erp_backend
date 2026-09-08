@@ -1319,7 +1319,7 @@ class SectionListAPIView(APIView):
     def get(self, request):
 
         school = request.school
-        branch_id = request.query_params.get("branch_id")
+        branch_id = request.headers.get("X-Branch-Id")
         grade_id = request.query_params.get("grade_id")
 
         application_logger.info(
@@ -2358,7 +2358,7 @@ class StudentListAPIView(APIView):
         school = request.school
 
         academic_year_id = request.query_params.get("academic_year_id")
-        branch_id = request.query_params.get("branch_id")
+        branch_id = request.headers.get("X-Branch-Id")
         grade_id = request.query_params.get("grade_id")
         section_id = request.query_params.get("section_id")
         board = request.query_params.get("board")
@@ -3488,7 +3488,7 @@ class GetStaffAPIView(APIView):
     def get(self, request):
 
         school = request.school
-        branch_id = request.query_params.get("branch_id")
+        branch_id = request.headers.get("X-Branch-Id")
 
         application_logger.info(
             "staff_list_requested",
@@ -5236,9 +5236,7 @@ class SchoolDocumentListAPIView(APIView):
                 school=school,
             )
 
-            branch_id = request.query_params.get(
-                "branch_id"
-            )
+            branch_id = request.headers.get("X-Branch-Id")
 
             document_type_id = request.query_params.get(
                 "document_type_id"
