@@ -870,7 +870,7 @@ class GradeListAPIView(APIView):
     def get(self, request):
 
         school = request.school
-        branch_id = request.headers.get("branch_id")
+        branch_id = request.headers.get("X-Branch-Id")
 
         application_logger.info(
             "grades_fetch_started",

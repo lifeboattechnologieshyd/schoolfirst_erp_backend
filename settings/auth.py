@@ -62,6 +62,7 @@ CORS_ALLOW_HEADERS = [
     "baggage",
     "Access-Control-Allow-Credentials",
     "X-School-Id",
+    "X-Branch-Id",
 ]
 CORS_EXPOSE_HEADERS = [
     "x-request-id",
