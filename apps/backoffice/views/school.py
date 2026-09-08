@@ -880,6 +880,7 @@ class GradeListAPIView(APIView):
         )
 
         if school is None:
+
             application_logger.warning(
                 "grades_fetch_failed",
                 requested_by=str(request.user.id),
@@ -890,44 +891,44 @@ class GradeListAPIView(APIView):
                 description="School not found."
             )
 
-        if not branch_id:
-            application_logger.warning(
-                "grades_fetch_failed",
-                requested_by=str(request.user.id),
-                school_id=str(school.id),
-                reason="branch_id_missing",
-            )
-
-            return CustomResponse.errorResponse(
-                description="Branch ID is required in headers."
-            )
-
-        branch = Branch.objects.filter(
-            id=branch_id,
-            school=school,
-        ).first()
-
-        if branch is None:
-            application_logger.warning(
-                "grades_fetch_failed",
-                requested_by=str(request.user.id),
-                school_id=str(school.id),
-                branch_id=branch_id,
-                reason="branch_not_found",
-            )
-
-            return CustomResponse.errorResponse(
-                description="Branch not found."
-            )
-
+        # Base queryset - all grades for the school
         grades = Grade.objects.select_related(
             "school",
             "academic_year",
             "branch",
         ).filter(
             school=school,
-            branch=branch,
-        ).order_by(
+        )
+
+        branch = None
+
+        # Branch is optional
+        if branch_id:
+
+            branch = Branch.objects.filter(
+                id=branch_id,
+                school=school,
+            ).first()
+
+            if branch is None:
+
+                application_logger.warning(
+                    "grades_fetch_failed",
+                    requested_by=str(request.user.id),
+                    school_id=str(school.id),
+                    branch_id=branch_id,
+                    reason="branch_not_found",
+                )
+
+                return CustomResponse.errorResponse(
+                    description="Branch not found."
+                )
+
+            grades = grades.filter(
+                branch=branch,
+            )
+
+        grades = grades.order_by(
             "display_order"
         )
 
@@ -935,10 +936,14 @@ class GradeListAPIView(APIView):
             {
                 "id": str(grade.id),
                 "school": grade.school.name,
-                "branch": {
-                    "id": str(grade.branch.id),
-                    "name": grade.branch.name,
-                },
+                "branch": (
+                    {
+                        "id": str(grade.branch.id),
+                        "name": grade.branch.name,
+                    }
+                    if grade.branch
+                    else None
+                ),
                 "academic_year": grade.academic_year.name,
                 "name": grade.name,
                 "display_order": grade.display_order,
@@ -951,7 +956,7 @@ class GradeListAPIView(APIView):
             "grades_fetched",
             requested_by=str(request.user.id),
             school_id=str(school.id),
-            branch_id=str(branch.id),
+            branch_id=str(branch.id) if branch else None,
             total_count=len(data),
         )
 
