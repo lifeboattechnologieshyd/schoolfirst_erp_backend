@@ -2406,7 +2406,7 @@ class VehicleAssignmentListAPIView(APIView):
 
         school = request.school
 
-        branch_id = request.GET.get("branch_id")
+        branch_id = request.headers.get("X-Branch-Id")
         vehicle_id = request.GET.get("vehicle_id")
         route_id = request.GET.get("route_id")
         driver_id = request.GET.get("driver_id")
@@ -3189,6 +3189,8 @@ class UpdateStopAPIView(APIView):
         return CustomResponse.successResponse(
             description="Stop updated successfully.",
         )
+
+
 
 class CreateStudentTransportAPIView(APIView):
 
