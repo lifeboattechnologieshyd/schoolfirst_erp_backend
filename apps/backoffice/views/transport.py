@@ -2141,261 +2141,277 @@ class UpdateRouteStopAPIView(APIView):
         )
 
 class CreateVehicleAssignmentAPIView(APIView):
-
     permission_classes = [IsAuthenticated, HasPermission]
     required_permission = "vehicle.assignment.create"
 
     def post(self, request):
-
         school = request.school
+
+        branch_id = request.headers.get("X-Branch-Id")
 
         vehicle_id = request.data.get("vehicle_id")
         route_id = request.data.get("route_id")
         driver_id = request.data.get("driver_id")
         attendant_id = request.data.get("attendant_id")
-        branch_id = request.data.get("branch_id")
         effective_from = request.data.get("effective_from")
-
-        application_logger.info(
-            "vehicle_assignment_create_requested",
-            requested_by=str(request.user.id),
-            school_id=str(school.id) if school else None,
-            vehicle_id=vehicle_id,
-            route_id=route_id,
-        )
-
-        if school is None:
-
-            application_logger.warning(
-                "vehicle_assignment_create_failed",
-                requested_by=str(request.user.id),
-                reason="school_not_found",
-            )
-
-            return CustomResponse.errorResponse(
-                description="School not found."
-            )
-
-        required_fields = [
-            "vehicle_id",
-            "route_id",
-            "driver_id",
-            "effective_from",
-        ]
-
-        for field in required_fields:
-
-            if request.data.get(field) in [None, ""]:
-
-                application_logger.warning(
-                    "vehicle_assignment_create_failed",
-                    requested_by=str(request.user.id),
-                    school_id=str(school.id),
-                    field=field,
-                    reason="required_field_missing",
-                )
-
-                return CustomResponse.errorResponse(
-                    description=f"{field} is required."
-                )
-
-        branch = None
-
-        if branch_id:
-
-            branch = Branch.objects.filter(
-                id=branch_id,
-                school=school,
-            ).first()
-
-            if branch is None:
-
-                application_logger.warning(
-                    "vehicle_assignment_create_failed",
-                    requested_by=str(request.user.id),
-                    school_id=str(school.id),
-                    branch_id=branch_id,
-                    reason="branch_not_found",
-                )
-
-                return CustomResponse.errorResponse(
-                    description="Branch not found."
-                )
-
-        vehicle = Vehicle.objects.filter(
-            id=vehicle_id,
-            school=school,
-        ).first()
-
-        if vehicle is None:
-
-            application_logger.warning(
-                "vehicle_assignment_create_failed",
-                requested_by=str(request.user.id),
-                school_id=str(school.id),
-                vehicle_id=vehicle_id,
-                reason="vehicle_not_found",
-            )
-
-            return CustomResponse.errorResponse(
-                description="Vehicle not found."
-            )
-
-        route = Route.objects.filter(
-            id=route_id,
-            school=school,
-        ).first()
-
-        if route is None:
-
-            application_logger.warning(
-                "vehicle_assignment_create_failed",
-                requested_by=str(request.user.id),
-                school_id=str(school.id),
-                route_id=route_id,
-                reason="route_not_found",
-            )
-
-            return CustomResponse.errorResponse(
-                description="Route not found."
-            )
-
-        driver = Staff.objects.filter(
-            id=driver_id,
-            school=school,
-            staff_type=Staff.StaffType.DRIVER,
-        ).first()
-
-        if driver is None:
-
-            application_logger.warning(
-                "vehicle_assignment_create_failed",
-                requested_by=str(request.user.id),
-                school_id=str(school.id),
-                driver_id=driver_id,
-                reason="driver_not_found",
-            )
-
-            return CustomResponse.errorResponse(
-                description="Driver not found."
-            )
-
-        attendant = None
-
-        if attendant_id:
-
-            attendant = Staff.objects.filter(
-                id=attendant_id,
-                school=school,
-                staff_type=Staff.StaffType.BUS_ATTENDANT,
-            ).first()
-
-            if attendant is None:
-
-                application_logger.warning(
-                    "vehicle_assignment_create_failed",
-                    requested_by=str(request.user.id),
-                    school_id=str(school.id),
-                    attendant_id=attendant_id,
-                    reason="attendant_not_found",
-                )
-
-                return CustomResponse.errorResponse(
-                    description="Bus attendant not found."
-                )
-
-        if VehicleAssignment.objects.filter(
-            vehicle=vehicle,
-            effective_from=effective_from,
-        ).exists():
-
-            application_logger.warning(
-                "vehicle_assignment_create_failed",
-                requested_by=str(request.user.id),
-                school_id=str(school.id),
-                vehicle_id=str(vehicle.id),
-                effective_from=effective_from,
-                reason="vehicle_assignment_already_exists",
-            )
-
-            return CustomResponse.errorResponse(
-                description="Vehicle assignment already exists for the selected effective date."
-            )
-
         effective_to = request.data.get("effective_to")
-
-        if effective_to and effective_to < effective_from:
-
-            application_logger.warning(
-                "vehicle_assignment_create_failed",
-                requested_by=str(request.user.id),
-                school_id=str(school.id),
-                reason="invalid_date_range",
-            )
-
-            return CustomResponse.errorResponse(
-                description="Effective To should be greater than or equal to Effective From."
-            )
+        remarks = request.data.get("remarks")
 
         try:
+            application_logger.info(
+                "vehicle_assignment_create_requested",
+                requested_by=str(request.user.id),
+                school_id=str(school.id) if school else None,
+                branch_id=branch_id,
+                vehicle_id=vehicle_id,
+                route_id=route_id,
+                driver_id=driver_id,
+                attendant_id=attendant_id,
+                effective_from=effective_from,
+                effective_to=effective_to,
+            )
 
-            with transaction.atomic():
 
-                assignment = VehicleAssignment.objects.create(
-                    school=school,
-                    branch=branch,
-                    vehicle=vehicle,
-                    route=route,
-                    driver=driver,
-                    attendant=attendant,
-                    effective_from=effective_from,
-                    effective_to=effective_to,
-                    status=request.data.get(
-                        "status",
-                        VehicleAssignment.Status.ACTIVE,
-                    ),
-                    remarks=request.data.get("remarks"),
+
+            if not school:
+                return CustomResponse.errorResponse(
+                    data={},
+                    description="School is required",
                 )
 
-        except Exception as e:
 
+
+            required_fields = {
+                "vehicle_id": vehicle_id,
+                "route_id": route_id,
+                "driver_id": driver_id,
+                "effective_from": effective_from,
+            }
+
+            missing_fields = [
+                field
+                for field, value in required_fields.items()
+                if not value
+            ]
+
+            if missing_fields:
+                return CustomResponse.errorResponse(
+                    data={},
+                    description=f"Required fields missing: {', '.join(missing_fields)}",
+                )
+
+
+
+            branch = None
+
+            if branch_id:
+                branch = Branch.objects.filter(
+                    id=branch_id,
+                    school=school,
+                ).first()
+
+                if not branch:
+                    return CustomResponse.errorResponse(
+                        data={},
+                        description="Invalid branch",
+                    )
+
+
+
+            vehicle = Vehicle.objects.filter(
+                id=vehicle_id,
+                school=school,
+            ).first()
+
+            if not vehicle:
+                return CustomResponse.errorResponse(
+                    data={},
+                    description="Vehicle not found",
+                )
+
+
+
+            route = Route.objects.filter(
+                id=route_id,
+                school=school,
+            ).first()
+
+            if not route:
+                return CustomResponse.errorResponse(
+                    data={},
+                    description="Route not found",
+                )
+
+
+
+            driver = Staff.objects.filter(
+                id=driver_id,
+                school=school,
+                staff_type=Staff.StaffType.DRIVER,
+            ).first()
+
+            if not driver:
+                return CustomResponse.errorResponse(
+                    data={},
+                    description="Invalid driver",
+                )
+
+
+
+            attendant = None
+
+            if attendant_id:
+                attendant = Staff.objects.filter(
+                    id=attendant_id,
+                    school=school,
+                    staff_type=Staff.StaffType.BUS_ATTENDANT,
+                ).first()
+
+                if not attendant:
+                    return CustomResponse.errorResponse(
+                        data={},
+                        description="Invalid bus attendant",
+                    )
+
+
+
+            from datetime import datetime
+
+            try:
+                effective_from_date = datetime.strptime(
+                    effective_from,
+                    "%Y-%m-%d",
+                ).date()
+            except (ValueError, TypeError):
+                return CustomResponse.errorResponse(
+                    data={},
+                    description="Invalid effective_from. Use YYYY-MM-DD",
+                )
+
+            effective_to_date = None
+
+            if effective_to:
+                try:
+                    effective_to_date = datetime.strptime(
+                        effective_to,
+                        "%Y-%m-%d",
+                    ).date()
+                except (ValueError, TypeError):
+                    return CustomResponse.errorResponse(
+                        data={},
+                        description="Invalid effective_to. Use YYYY-MM-DD",
+                    )
+
+                if effective_to_date < effective_from_date:
+                    return CustomResponse.errorResponse(
+                        data={},
+                        description="effective_to cannot be before effective_from",
+                    )
+
+
+
+            if VehicleAssignment.objects.filter(
+                vehicle=vehicle,
+                effective_from=effective_from_date,
+            ).exists():
+                return CustomResponse.errorResponse(
+                    data={},
+                    description="Vehicle assignment already exists for this effective date",
+                )
+
+
+
+            assignment = VehicleAssignment.objects.create(
+                school=school,
+                branch=branch,
+                vehicle=vehicle,
+                route=route,
+                driver=driver,
+                attendant=attendant,
+                effective_from=effective_from_date,
+                effective_to=effective_to_date,
+                status=VehicleAssignment.Status.ACTIVE,
+                remarks=remarks,
+            )
+
+            application_logger.info(
+                "vehicle_assignment_created",
+                requested_by=str(request.user.id),
+                school_id=str(school.id),
+                assignment_id=str(assignment.id),
+                branch_id=str(branch.id) if branch else None,
+                vehicle_id=str(vehicle.id),
+                route_id=str(route.id),
+                driver_id=str(driver.id),
+                attendant_id=str(attendant.id) if attendant else None,
+            )
+
+            return CustomResponse.successResponse(
+                data={
+                    "id": str(assignment.id),
+                    "vehicle": {
+                        "id": str(vehicle.id),
+                        "vehicle_number": vehicle.vehicle_number,
+                    },
+                    "route": {
+                        "id": str(route.id),
+                        "route_name": route.route_name,
+                    },
+                    "driver": {
+                        "id": str(driver.id),
+                        "employee_id": driver.employee_id,
+                        "name": driver.name,
+                    },
+                    "attendant": (
+                        {
+                            "id": str(attendant.id),
+                            "employee_id": attendant.employee_id,
+                            "name": attendant.name,
+                        }
+                        if attendant
+                        else None
+                    ),
+                    "branch": (
+                        {
+                            "id": str(branch.id),
+                            "name": branch.name,
+                        }
+                        if branch
+                        else None
+                    ),
+                    "effective_from": str(
+                        assignment.effective_from
+                    ),
+                    "effective_to": (
+                        str(assignment.effective_to)
+                        if assignment.effective_to
+                        else None
+                    ),
+                    "status": assignment.status,
+                    "remarks": assignment.remarks,
+                },
+                description="Vehicle assignment created successfully",
+            )
+
+        except Exception as exc:
             application_logger.exception(
                 "vehicle_assignment_create_failed",
                 requested_by=str(request.user.id),
-                school_id=str(school.id),
-                vehicle_id=str(vehicle.id),
-                route_id=str(route.id),
-                reason="vehicle_assignment_creation_failed",
-                error=str(e),
+                school_id=str(school.id) if school else None,
+                branch_id=branch_id,
+                vehicle_id=vehicle_id,
+                route_id=route_id,
+                driver_id=driver_id,
+                attendant_id=attendant_id,
+                effective_from=effective_from,
+                effective_to=effective_to,
+                error=str(exc),
             )
 
             return CustomResponse.errorResponse(
-                description=str(e),
+                data={},
+                description="Internal server error.",
             )
-
-        application_logger.info(
-            "vehicle_assignment_created",
-            requested_by=str(request.user.id),
-            school_id=str(school.id),
-            assignment_id=str(assignment.id),
-            vehicle_id=str(vehicle.id),
-            route_id=str(route.id),
-        )
-
-        return CustomResponse.successResponse(
-            description="Vehicle assignment created successfully.",
-            data={
-                "id": str(assignment.id),
-                "vehicle": vehicle.vehicle_number,
-                "route": route.route_name,
-                "driver": driver.name,
-                "attendant": attendant.name if attendant else None,
-                "effective_from": assignment.effective_from,
-                "effective_to": assignment.effective_to,
-                "status": assignment.status,
-            },
-        )
-
 
 class VehicleAssignmentListAPIView(APIView):
 
