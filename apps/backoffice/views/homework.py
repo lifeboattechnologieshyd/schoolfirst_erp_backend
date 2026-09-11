@@ -4,7 +4,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.views import APIView
 
 from apps.calendar.models import CalendarEvent, CalendarEventTarget
-from apps.homework.models import Homework, HomeworkSubmission, HomeworkSection
+from apps.homework.models import Homework, HomeworkSubmission, HomeworkSection, HomeworkAttachment
 from apps.school.models.school import Staff, Section, Branch, Subject, Grade, AcademicYear, Student
 from shared.mixins import CustomResponse
 from shared.permissions import HasPermission
@@ -238,6 +238,40 @@ class CreateHomeworkAPIView(APIView):
                     "invalid_sections": invalid_section_details,
                 },
             )
+        attachments = request.data.get("attachments", [])
+
+        if attachments is None:
+            attachments = []
+
+        if not isinstance(attachments, list):
+            application_logger.warning(
+                "homework_create_failed",
+                reason="invalid_attachments",
+                school_id=str(school.id),
+            )
+
+            return CustomResponse.errorResponse(
+                description="attachments must be a list."
+            )
+
+        for attachment in attachments:
+            if not isinstance(attachment, dict):
+                return CustomResponse.errorResponse(
+                    description="Each attachment must be an object."
+                )
+
+            file_name = attachment.get("file_name")
+            file_url = attachment.get("file_url")
+
+            if not file_name:
+                return CustomResponse.errorResponse(
+                    description="Attachment file_name is required."
+                )
+
+            if not file_url:
+                return CustomResponse.errorResponse(
+                    description="Attachment file_url is required."
+                )
 
         status = request.data.get(
             "status",
@@ -299,6 +333,17 @@ class CreateHomeworkAPIView(APIView):
                         for section in sections
                     ]
                 )
+
+                HomeworkAttachment.objects.bulk_create(
+                    [
+                        HomeworkAttachment(
+                            homework=homework,
+                            file_name=attachment["file_name"].strip(),
+                            file_url=attachment["file_url"].strip(),
+                        )
+                        for attachment in attachments
+                    ]
+                )
                 create_calendar_event(
                     school=school,
                     title=homework.title,
@@ -337,6 +382,7 @@ class CreateHomeworkAPIView(APIView):
             subject_id=str(subject.id),
             teacher_id=str(teacher.id),
             section_count=len(section_ids),
+            attachment_count=len(attachments),
             user_id=str(request.user.id),
         )
 
@@ -387,6 +433,7 @@ class HomeworkListAPIView(APIView):
                 "teacher",
             ).prefetch_related(
                 "homework_sections__section",
+                "attachments",
             ).filter(
                 school=school,
             )
@@ -496,6 +543,18 @@ class HomeworkListAPIView(APIView):
                         }
                         for item in homework.homework_sections.all()
                     ],
+                    "attachments": [
+                        {
+                            "id": str(
+                                attachment.id
+                            ),
+                            "file_name": attachment.file_name,
+                            "file_url": attachment.file_url,
+                        }
+                        for attachment
+                        in homework.attachments.all()
+                    ],
+
                 })
 
             application_logger.info(
@@ -709,6 +768,45 @@ class HomeworkUpdateAPIView(APIView):
                     return CustomResponse.errorResponse(
                         description="One or more sections are invalid."
                     )
+            attachments = None
+
+            if "attachments" in request.data:
+
+                attachments = request.data.get("attachments")
+
+                if attachments is None:
+                    attachments = []
+
+                if not isinstance(attachments, list):
+                    application_logger.warning(
+                        "homework_update_failed",
+                        reason="invalid_attachments",
+                        homework_id=str(homework.id),
+                    )
+
+                    return CustomResponse.errorResponse(
+                        description="attachments must be a list."
+                    )
+
+                for attachment in attachments:
+
+                    if not isinstance(attachment, dict):
+                        return CustomResponse.errorResponse(
+                            description="Each attachment must be an object."
+                        )
+
+                    file_name = attachment.get("file_name")
+                    file_url = attachment.get("file_url")
+
+                    if not file_name:
+                        return CustomResponse.errorResponse(
+                            description="Attachment file_name is required."
+                        )
+
+                    if not file_url:
+                        return CustomResponse.errorResponse(
+                            description="Attachment file_url is required."
+                        )
 
             status = request.data.get(
                 "status",
@@ -790,6 +888,22 @@ class HomeworkUpdateAPIView(APIView):
                         ]
                     )
 
+                if attachments is not None:
+                    HomeworkAttachment.objects.filter(
+                        homework=homework,
+                    ).delete()
+
+                    HomeworkAttachment.objects.bulk_create(
+                        [
+                            HomeworkAttachment(
+                                homework=homework,
+                                file_name=attachment["file_name"].strip(),
+                                file_url=attachment["file_url"].strip(),
+                            )
+                            for attachment in attachments
+                        ]
+                    )
+
             application_logger.info(
                 "homework_updated",
                 homework_id=str(homework.id),
@@ -806,6 +920,7 @@ class HomeworkUpdateAPIView(APIView):
                         homework=homework,
                     ).count()
                 ),
+                attachment_count=len(attachments),
                 user_id=str(user.id),
             )
 
