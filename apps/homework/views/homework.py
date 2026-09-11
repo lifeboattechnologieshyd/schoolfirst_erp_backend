@@ -64,6 +64,7 @@ class StudentHomeworkListAPIView(APIView):
                 "teacher",
             ).prefetch_related(
                 "homework_sections__section",
+                "attachments"
             ).filter(
                 school_id=student.school_id,
                 academic_year_id=student.academic_year_id,
@@ -139,6 +140,17 @@ class StudentHomeworkListAPIView(APIView):
                             if submission
                             else None
                         ),
+                        "attachments": [
+                            {
+                                "id": str(
+                                    attachment.id
+                                ),
+                                "file_name": attachment.file_name,
+                                "file_url": attachment.file_url,
+                            }
+                            for attachment
+                            in homework.attachments.all()
+                        ],
                     },
                 })
 
