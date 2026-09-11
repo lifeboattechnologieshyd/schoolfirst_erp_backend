@@ -1625,19 +1625,26 @@ class UpdateRouteAPIView(APIView):
             },
         )
 
-
 class CreateRouteStopAPIView(APIView):
-
     permission_classes = [IsAuthenticated, HasPermission]
     required_permission = "route.stop.create"
 
     def post(self, request):
-
         school = request.school
 
         route_id = request.data.get("route_id")
         stop_id = request.data.get("stop_id")
         stop_order = request.data.get("stop_order")
+
+        pickup_time = request.data.get("pickup_time")
+        drop_time = request.data.get("drop_time")
+        distance_from_previous_stop = request.data.get(
+            "distance_from_previous_stop",
+            0,
+        )
+        estimated_travel_time = request.data.get(
+            "estimated_travel_time"
+        )
 
         application_logger.info(
             "route_stop_create_requested",
@@ -1645,41 +1652,54 @@ class CreateRouteStopAPIView(APIView):
             school_id=str(school.id) if school else None,
             route_id=route_id,
             stop_id=stop_id,
+            stop_order=stop_order,
         )
 
+        # ---------------------------------------------------------
+        # School validation
+        # ---------------------------------------------------------
+
         if school is None:
-
-            application_logger.warning(
-                "route_stop_create_failed",
-                requested_by=str(request.user.id),
-                reason="school_not_found",
-            )
-
             return CustomResponse.errorResponse(
                 description="School not found."
             )
 
-        required_fields = [
-            "route_id",
-            "stop_id",
-            "stop_order",
-        ]
+        # ---------------------------------------------------------
+        # Required fields
+        # ---------------------------------------------------------
 
-        for field in required_fields:
+        required_fields = {
+            "route_id": route_id,
+            "stop_id": stop_id,
+            "stop_order": stop_order,
+        }
 
-            if request.data.get(field) in [None, ""]:
-
-                application_logger.warning(
-                    "route_stop_create_failed",
-                    requested_by=str(request.user.id),
-                    school_id=str(school.id),
-                    field=field,
-                    reason="required_field_missing",
-                )
-
+        for field, value in required_fields.items():
+            if value in [None, ""]:
                 return CustomResponse.errorResponse(
                     description=f"{field} is required."
                 )
+
+        # ---------------------------------------------------------
+        # Stop order validation
+        # ---------------------------------------------------------
+
+        try:
+            stop_order = int(stop_order)
+
+            if stop_order < 1:
+                return CustomResponse.errorResponse(
+                    description="stop_order must be greater than 0."
+                )
+
+        except (ValueError, TypeError):
+            return CustomResponse.errorResponse(
+                description="Invalid stop_order."
+            )
+
+        # ---------------------------------------------------------
+        # Route
+        # ---------------------------------------------------------
 
         route = Route.objects.filter(
             id=route_id,
@@ -1687,18 +1707,13 @@ class CreateRouteStopAPIView(APIView):
         ).first()
 
         if route is None:
-
-            application_logger.warning(
-                "route_stop_create_failed",
-                requested_by=str(request.user.id),
-                school_id=str(school.id),
-                route_id=route_id,
-                reason="route_not_found",
-            )
-
             return CustomResponse.errorResponse(
                 description="Route not found."
             )
+
+        # ---------------------------------------------------------
+        # Stop
+        # ---------------------------------------------------------
 
         stop = Stop.objects.filter(
             id=stop_id,
@@ -1706,72 +1721,131 @@ class CreateRouteStopAPIView(APIView):
         ).first()
 
         if stop is None:
-
-            application_logger.warning(
-                "route_stop_create_failed",
-                requested_by=str(request.user.id),
-                school_id=str(school.id),
-                stop_id=stop_id,
-                reason="stop_not_found",
-            )
-
             return CustomResponse.errorResponse(
                 description="Stop not found."
             )
+
+        # ---------------------------------------------------------
+        # Branch validation
+        # ---------------------------------------------------------
+
+        if route.branch_id and stop.branch_id:
+            if route.branch_id != stop.branch_id:
+                return CustomResponse.errorResponse(
+                    description="Stop does not belong to the route branch."
+                )
+
+        # ---------------------------------------------------------
+        # Duplicate stop
+        # ---------------------------------------------------------
 
         if RouteStop.objects.filter(
             route=route,
             stop=stop,
         ).exists():
-
-            application_logger.warning(
-                "route_stop_create_failed",
-                requested_by=str(request.user.id),
-                school_id=str(school.id),
-                route_id=str(route.id),
-                stop_id=str(stop.id),
-                reason="route_stop_already_exists",
-            )
-
             return CustomResponse.errorResponse(
                 description="Stop is already mapped to this route."
             )
+
+        # ---------------------------------------------------------
+        # Duplicate stop order
+        # ---------------------------------------------------------
 
         if RouteStop.objects.filter(
             route=route,
             stop_order=stop_order,
         ).exists():
-
-            application_logger.warning(
-                "route_stop_create_failed",
-                requested_by=str(request.user.id),
-                school_id=str(school.id),
-                route_id=str(route.id),
-                stop_order=stop_order,
-                reason="stop_order_already_exists",
-            )
-
             return CustomResponse.errorResponse(
                 description="Stop order already exists for this route."
             )
 
-        try:
+        # ---------------------------------------------------------
+        # School stop validation
+        # ---------------------------------------------------------
 
+        if stop.stop_type == Stop.StopType.SCHOOL:
+
+            existing_stop_count = RouteStop.objects.filter(
+                route=route
+            ).count()
+
+            # Morning:
+            # School must be the last stop.
+            #
+            # If this is the first stop being added,
+            # stop_order should be 1.
+            #
+            # When adding subsequent stops, school should
+            # always be after all regular stops.
+
+            if route.shift == Route.Shift.MORNING:
+
+                if stop_order != existing_stop_count + 1:
+                    return CustomResponse.errorResponse(
+                        description=(
+                            "For morning routes, the school stop "
+                            "must be the last stop."
+                        )
+                    )
+
+            # Evening:
+            # School must be the first stop.
+
+            elif route.shift == Route.Shift.EVENING:
+
+                if stop_order != 1:
+                    return CustomResponse.errorResponse(
+                        description=(
+                            "For evening routes, the school stop "
+                            "must be the first stop."
+                        )
+                    )
+
+            # Afternoon - business rule can be defined later.
+            elif route.shift == Route.Shift.AFTERNOON:
+
+                pass
+
+        # ---------------------------------------------------------
+        # Regular stop validation
+        # ---------------------------------------------------------
+
+        if stop.stop_type == Stop.StopType.REGULAR:
+
+            # If school stop already exists for an evening route,
+            # regular stops can only come after school.
+            if route.shift == Route.Shift.EVENING:
+
+                school_stop_exists = RouteStop.objects.filter(
+                    route=route,
+                    stop__stop_type=Stop.StopType.SCHOOL,
+                ).exists()
+
+                if school_stop_exists and stop_order == 1:
+                    return CustomResponse.errorResponse(
+                        description=(
+                            "For evening routes, the school stop "
+                            "must remain the first stop."
+                        )
+                    )
+
+        # ---------------------------------------------------------
+        # Create Route Stop
+        # ---------------------------------------------------------
+
+        try:
             with transaction.atomic():
 
                 route_stop = RouteStop.objects.create(
                     route=route,
                     stop=stop,
                     stop_order=stop_order,
-                    pickup_time=request.data.get("pickup_time"),
-                    drop_time=request.data.get("drop_time"),
-                    distance_from_previous_stop=request.data.get(
-                        "distance_from_previous_stop",
-                        0,
+                    pickup_time=pickup_time,
+                    drop_time=drop_time,
+                    distance_from_previous_stop=(
+                        distance_from_previous_stop or 0
                     ),
-                    estimated_travel_time=request.data.get(
-                        "estimated_travel_time",
-                    ),
+                    estimated_travel_time=estimated_travel_time,
                 )
 
         except Exception as e:
@@ -1782,13 +1856,17 @@ class CreateRouteStopAPIView(APIView):
                 school_id=str(school.id),
                 route_id=str(route.id),
                 stop_id=str(stop.id),
-                reason="route_stop_creation_failed",
+                stop_order=stop_order,
                 error=str(e),
             )
 
             return CustomResponse.errorResponse(
                 description=str(e),
             )
+
+        # ---------------------------------------------------------
+        # Success log
+        # ---------------------------------------------------------
 
         application_logger.info(
             "route_stop_created",
@@ -1800,17 +1878,15 @@ class CreateRouteStopAPIView(APIView):
             stop_order=route_stop.stop_order,
         )
 
+        # ---------------------------------------------------------
+        # Response
+        # ---------------------------------------------------------
+
         return CustomResponse.successResponse(
             description="Route stop created successfully.",
             data={
                 "id": str(route_stop.id),
-                "route_id": str(route.id),
-                "route_name": route.route_name,
-                "stop_id": str(stop.id),
-                "stop_name": stop.stop_name,
-                "stop_order": route_stop.stop_order,
-                "pickup_time": route_stop.pickup_time,
-                "drop_time": route_stop.drop_time,
+
             },
         )
 

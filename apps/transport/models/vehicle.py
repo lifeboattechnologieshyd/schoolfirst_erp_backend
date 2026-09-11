@@ -273,6 +273,10 @@ class Stop(AuditModel):
         ACTIVE = "ACTIVE", "Active"
         INACTIVE = "INACTIVE", "Inactive"
 
+    class StopType(models.TextChoices):
+        REGULAR = "REGULAR", "Regular"
+        SCHOOL = "SCHOOL", "School"
+
     id = models.UUIDField(
         primary_key=True,
         default=uuid.uuid4,
@@ -293,12 +297,14 @@ class Stop(AuditModel):
         related_name="stops",
     )
 
-    stop_name = models.CharField(
-        max_length=255,
-    )
+    stop_name = models.CharField(max_length=255)
 
-    stop_code = models.CharField(
-        max_length=50,
+    stop_code = models.CharField(max_length=50)
+
+    stop_type = models.CharField(
+        max_length=20,
+        choices=StopType.choices,
+        default=StopType.REGULAR,
     )
 
     landmark = models.CharField(
@@ -335,6 +341,7 @@ class Stop(AuditModel):
         null=True,
         blank=True,
     )
+
     annual_transport_fee = models.DecimalField(
         max_digits=10,
         decimal_places=2,
@@ -366,6 +373,7 @@ class Stop(AuditModel):
             models.Index(fields=["branch"]),
             models.Index(fields=["status"]),
             models.Index(fields=["stop_name"]),
+            models.Index(fields=["stop_type"]),
         ]
 
     def __str__(self):
