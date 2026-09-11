@@ -3006,6 +3006,15 @@ class CreateStopAPIView(APIView):
                 return CustomResponse.errorResponse(
                     description="Branch not found."
                 )
+        stop_type = request.data.get(
+            "stop_type",
+            Stop.StopType.REGULAR,
+        )
+
+        if stop_type not in Stop.StopType.values:
+            return CustomResponse.errorResponse(
+                description="Invalid stop type."
+            )
 
         try:
 
@@ -3020,6 +3029,7 @@ class CreateStopAPIView(APIView):
                 longitude=request.data.get("longitude"),
                 pickup_time=request.data.get("pickup_time"),
                 drop_time=request.data.get("drop_time"),
+                stop_type = stop_type,
                 # radius=request.data.get(
                 #     "radius",
                 #     100,
@@ -3126,6 +3136,7 @@ class StopListAPIView(APIView):
                 "drop_time": stop.drop_time,
                 # "radius": stop.radius,
                 "status": stop.status,
+                "stop_type": stop.stop_type,
             })
 
         application_logger.info(
@@ -3211,6 +3222,8 @@ class UpdateStopAPIView(APIView):
             # Allow removing branch
             branch = None
 
+
+
         try:
 
             stop.branch = branch
@@ -3254,6 +3267,16 @@ class UpdateStopAPIView(APIView):
                 "status",
                 stop.status,
             )
+
+            stop_type = request.data.get("stop_type")
+
+            if stop_type is not None:
+                if stop_type not in Stop.StopType.values:
+                    return CustomResponse.errorResponse(
+                        description="Invalid stop type."
+                    )
+
+                stop.stop_type = stop_type
 
             stop.save()
 
