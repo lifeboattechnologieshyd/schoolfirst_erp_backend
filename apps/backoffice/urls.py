@@ -45,7 +45,7 @@ from apps.backoffice.views.transport import CreateVehicleAPIView, VehicleListAPI
     CreateStudentTransportAPIView, UpdateStudentTransportAPIView, CreateTripAPIView, TripListAPIView, UpdateTripAPIView, \
     CreateTripAttendanceAPIView, TripAttendanceListAPIView, UpdateTripAttendanceAPIView, UpdateLiveLocationAPIView, \
     LiveLocationAPIView, LocationHistoryAPIView, StartTripAPIView, EndTripAPIView, CreateVehicleAssignmentAPIView, \
-    VehicleAssignmentListAPIView
+    VehicleAssignmentListAPIView, CreateRouteStopAPIView, RouteStopListAPIView, UpdateRouteStopAPIView
 from apps.fee.views.fee import CompletedStudentFeePaymentsAPIView
 
 urlpatterns = [
@@ -374,6 +374,12 @@ urlpatterns = [
     path("route",RouteListAPIView.as_view(),),
 
     path("route/<uuid:route_id>",UpdateRouteAPIView.as_view(),),
+
+    path("route-stop/create",CreateRouteStopAPIView.as_view(),),
+
+    path("route-stop",RouteStopListAPIView.as_view(),),
+
+    path("route-stop/<uuid:stop_id>",UpdateRouteStopAPIView.as_view(),),
 
     path("vehicle/assignment/create",CreateVehicleAssignmentAPIView.as_view(),),
 

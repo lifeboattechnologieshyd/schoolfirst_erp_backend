@@ -571,6 +571,8 @@ class AssignRoleToUserAPIView(APIView):
             },
             description="Role assigned successfully.",
         )
+
+
 class RBACDashboardAPIView(APIView):
 
     permission_classes = [
